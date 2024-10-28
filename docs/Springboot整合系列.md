@@ -69,7 +69,7 @@ public class RedisConfig {
 
 为什么覆盖？
 
-![序列化对比](../img/redis/xuliehua.png)
+<!-- ![序列化对比](./img/redis/xuliehua.png) -->
 
 在 Spring Boot 中配置 `RedisTemplate` 并覆盖默认的序列化器（如你在代码中所示），有以下几个好处：
 
