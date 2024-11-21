@@ -187,3 +187,213 @@ public HashMap<String,String> setHashMap(){
     return (HashMap<String, String>) redisTemplate.opsForHash().entries("hash2");
 }
 ```
+
+## Spring Security
+
+### 引入依赖
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-security</artifactId>
+</dependency>
+```
+
+### 基于内存的实现
+
+**实用场景:**
+
+对于小型应用或原型项目，内存存储可以满足基本的认证需求，而不需要复杂的用户管理。
+
+#### 示例：
+
+##### 先定义三个路由
+
+```java
+@RestController
+public class IndexController {
+
+    @GetMapping("/")
+    public String home() {
+        return "欢迎访问主页！";
+    }
+
+    @GetMapping("/user")
+    public String user() {
+        return "用户页面";
+    }
+
+    @GetMapping("/admin")
+    public String admin() {
+        return "管理员页面";
+    }
+}
+```
+
+##### 基于内存的springSercurity的配置
+
+```java
+package com.yili.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configurers.LogoutConfigurer;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.userdetails.User;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.provisioning.InMemoryUserDetailsManager;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.logout.CompositeLogoutHandler;
+import org.springframework.security.web.authentication.logout.LogoutHandler;
+
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
+// 配置类
+@Configuration
+// 开启WebSecurity
+@EnableWebSecurity
+public class SpringSecurityConfig {
+
+    /**
+     * 配置Spring Security的HTTP安全策略。
+     *
+     * @param http HttpSecurity对象，用于配置安全策略。
+     * @return 构建好的SecurityFilterChain对象。
+     * @throws Exception 如果配置过程中发生错误。
+     */
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http.authorizeRequests(authorize -> authorize
+                 .antMatchers("/admin/**").hasRole("ADMIN") // 配置/admin/**路径需要ADMIN角色
+                 .antMatchers("/user/**").hasAnyRole("USER") // 配置/user/**路径需要USER角色
+                 .antMatchers("/").permitAll() // 配置/路径允许所有用户访问
+                )
+                .formLogin();// 配置表单登录
+        return http.build(); // 返回构建好的SecurityFilterChain对象
+    }
+
+    /**
+     * 创建并返回一个PasswordEncoder实例，用于密码加密。
+     *
+     * @return BCryptPasswordEncoder实例。
+     */
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder(); // 返回一个BCryptPasswordEncoder实例
+    }
+
+    /**
+     * 创建并返回一个UserDetailsService实例，用于管理用户详情。
+     *
+     * @param passwordEncoder 用于加密用户密码的PasswordEncoder实例。
+     * @return InMemoryUserDetailsManager实例，管理内存中的用户详情。
+     */
+    @Bean
+    public UserDetailsService userDetailsService(PasswordEncoder passwordEncoder) {
+        // 创建普通用户user的UserDetails对象
+        UserDetails user = User.builder()
+                .password(passwordEncoder.encode("user")) // 使用PasswordEncoder加密密码
+                .username("user") // 设置用户名
+                .roles("USER") // 设置用户角色
+                .build();
+
+        // 创建管理员admin的UserDetails对象
+        UserDetails admin = User.builder()
+                .password(passwordEncoder.encode("admin")) // 使用PasswordEncoder加密密码
+                .username("admin") // 设置用户名
+                .roles("ADMIN") // 设置用户角色
+                .build();
+
+        // 返回一个InMemoryUserDetailsManager实例，管理user和admin两个用户
+        return new InMemoryUserDetailsManager(user, admin);
+    }
+}
+
+```
+
+##### 修改默认的登录页面
+
+创建一个自定义的login.html 
+
+```html
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Login</title>
+    <link rel="stylesheet" th:href="@{/css/login.css}">
+</head>
+<body>
+<div class="login-container">
+    <h1>Login</h1>
+    <form th:action="@{/login}" method="post">
+        <div>
+            <label for="username">Username:</label>
+            <input type="text" id="username" name="username" required />
+        </div>
+        <div>
+            <label for="password">Password:</label>
+            <input type="password" id="password" name="password" required />
+        </div>
+        <div>
+            <button type="submit">Login</button>
+        </div>
+    </form>
+    <div th:if="${param.error}" class="error">
+        <p>Invalid username or password.</p>
+    </div>
+    <div th:if="${param.logout}" class="logout">
+        <p>You have been logged out.</p>
+    </div>
+</div>
+</body>
+</html>
+```
+
+修改配置
+
+- 关于登出当我指定了自定义的登录页面 登出失效了？配置类logout可以不配置 但是这个/logout控制层这个要写
+
+```java
+// 配置类
+@Configuration
+// 开启WebSecurity
+@EnableWebSecurity
+public class SpringSecurityConfig {
+省略代码......
+@Bean
+public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    http.authorizeRequests(authorize -> authorize
+             .antMatchers("/admin/**").hasRole("ADMIN") 
+             .antMatchers("/user/**").hasAnyRole("USER") 
+             .antMatchers("/").permitAll())
+            .formLogin(formLogin -> formLogin
+                    .loginPage("/login")  // 指定自定义登录页面
+                    .permitAll()
+            )
+            .logout(logout -> logout
+                    .logoutUrl("/logout")  // 自定义登出 URL (/logout为默认的)
+                    .logoutSuccessUrl("/login?logout")  // 登出成功后重定向到登录页面(/login?logout默认的)
+                    .permitAll());
+    return http.build();
+}
+省略代码......
+}
+```
+
+登出逻辑
+
+```java
+@GetMapping("/logout")
+public String logout(Authentication authentication, HttpServletRequest request, HttpServletResponse response) {
+    SecurityContextLogoutHandler logoutHandler = new SecurityContextLogoutHandler();
+    // 关键
+    logoutHandler.logout(request, response, authentication);
+    return "redirect:/login?logout"; // 注销成功后重定向到登录页面并显示注销消息
+}
+```
